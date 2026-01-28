@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"reflect"
-	"unsafe"
 
 	"github.com/algolia/algoliasearch-client-go/v4/algolia/search"
 )
@@ -51,18 +49,8 @@ func (c *Client) Search(ctx context.Context, query string) (*SearchResult, error
 	}
 	searchParams := search.SearchParamsObjectAsSearchParams(&searchParamsObject)
 	
-	// Create the request and set the index name using unsafe
-	// (since indexName is unexported, we need unsafe to set it)
-	request := search.ApiSearchSingleIndexRequest{}
-	reqValue := reflect.ValueOf(&request).Elem()
-	
-	// Use unsafe to set the unexported indexName field
-	indexNameField := reqValue.FieldByName("indexName")
-	if indexNameField.IsValid() {
-		// Get a pointer to the unexported field using unsafe
-		fieldPtr := unsafe.Pointer(indexNameField.UnsafeAddr())
-		*(*string)(fieldPtr) = c.indexName
-	}
+	// Create the request with the index name using the proper API method
+	request := c.client.NewApiSearchSingleIndexRequest(c.indexName)
 	
 	// Use WithSearchParams to set the search parameters
 	request = request.WithSearchParams(searchParams)
