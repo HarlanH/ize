@@ -8,6 +8,8 @@
 *.out
 go.work
 go.work.sum
+# Build artifacts
+backend/server
 
 # Frontend
 node_modules/
