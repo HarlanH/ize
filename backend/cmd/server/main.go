@@ -2,11 +2,11 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 
 	"ize/internal/config"
 	"ize/internal/httpapi"
+	"ize/internal/logger"
 )
 
 // corsMiddleware adds CORS headers to allow requests from the frontend
@@ -16,9 +16,6 @@ func corsMiddleware(next http.Handler) http.Handler {
 		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:5173")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-		
-		// Log incoming requests for debugging
-		log.Printf("Request: %s %s", r.Method, r.URL.Path)
 		
 		// Handle preflight requests
 		if r.Method == "OPTIONS" {
@@ -31,10 +28,19 @@ func corsMiddleware(next http.Handler) http.Handler {
 }
 
 func main() {
+	log := logger.Default()
+	
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		log.ErrorWithErr("failed to load configuration", err)
+		panic(err)
 	}
+
+	log.Info("configuration loaded successfully",
+		"port", cfg.Port,
+		"algolia_app_id", cfg.AlgoliaAppID,
+		"algolia_index", cfg.AlgoliaIndexName,
+	)
 
 	mux := http.NewServeMux()
 	
@@ -45,10 +51,13 @@ func main() {
 	})
 
 	// Search endpoint
-	searchHandler, err := httpapi.NewSearchHandler(cfg)
+	searchHandler, err := httpapi.NewSearchHandler(cfg, log)
 	if err != nil {
-		log.Fatalf("Failed to create search handler: %v", err)
+		log.ErrorWithErr("failed to create search handler", err)
+		panic(err)
 	}
+	
+	log.Info("search handler initialized")
 	
 	// Handle both with and without trailing slash, and handle OPTIONS preflight
 	mux.HandleFunc("/api/search", func(w http.ResponseWriter, r *http.Request) {
@@ -69,12 +78,13 @@ func main() {
 	}
 
 	addr := fmt.Sprintf(":%s", port)
-	log.Printf("Server starting on %s", addr)
+	log.Info("server starting", "address", addr)
 	
-	// Wrap the mux with CORS middleware
-	handler := corsMiddleware(mux)
+	// Chain middleware: request ID logging -> CORS -> mux
+	handler := logger.RequestIDMiddleware(log, corsMiddleware(mux))
 	
 	if err := http.ListenAndServe(addr, handler); err != nil {
-		log.Fatalf("Server failed: %v", err)
+		log.ErrorWithErr("server failed to start", err, "address", addr)
+		panic(err)
 	}
 }

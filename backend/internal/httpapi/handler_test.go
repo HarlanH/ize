@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"ize/internal/algolia"
+	"ize/internal/logger"
 )
 
 // mockAlgoliaClient is a mock implementation of ClientInterface for testing
@@ -70,6 +71,7 @@ func TestSearchHandler_HandleSearch(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			handler := &SearchHandler{
 				algoliaClient: &mockAlgoliaClient{searchFunc: tt.mockSearchFunc},
+				logger:        logger.Default(),
 			}
 
 			body, _ := json.Marshal(tt.requestBody)
@@ -100,6 +102,7 @@ func TestSearchHandler_HandleSearch(t *testing.T) {
 func TestSearchHandler_HandleSearch_MethodNotAllowed(t *testing.T) {
 	handler := &SearchHandler{
 		algoliaClient: &mockAlgoliaClient{},
+		logger:        logger.Default(),
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/api/search", nil)
@@ -115,6 +118,7 @@ func TestSearchHandler_HandleSearch_MethodNotAllowed(t *testing.T) {
 func TestSearchHandler_HandleSearch_InvalidJSON(t *testing.T) {
 	handler := &SearchHandler{
 		algoliaClient: &mockAlgoliaClient{},
+		logger:        logger.Default(),
 	}
 
 	req := httptest.NewRequest(http.MethodPost, "/api/search", bytes.NewBufferString("invalid json"))
