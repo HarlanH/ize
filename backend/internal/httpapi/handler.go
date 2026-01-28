@@ -97,3 +97,105 @@ func (h *SearchHandler) HandleSearch(w http.ResponseWriter, r *http.Request) {
 		"results_count", len(results),
 	)
 }
+
+func (h *SearchHandler) HandleRipper(w http.ResponseWriter, r *http.Request) {
+	log := h.logger.WithContext(r.Context())
+	
+	if r.Method != http.MethodPost {
+		log.Warn("method not allowed", "method", r.Method)
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req SearchRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.ErrorWithErr("failed to decode request body", err)
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	log.Debug("processing RIPPER request",
+		"query", req.Query,
+		"facet_filters", req.FacetFilters,
+	)
+
+	// Search Algolia with 100 hits per page
+	algoliaResults, err := h.algoliaClient.SearchRipper(r.Context(), req.Query, req.FacetFilters)
+	if err != nil {
+		log.ErrorWithErr("algolia search failed for RIPPER", err, "query", req.Query)
+		http.Error(w, "Search failed", http.StatusInternalServerError)
+		return
+	}
+
+	log.Debug("algolia search completed for RIPPER",
+		"query", req.Query,
+		"hits_count", len(algoliaResults.Hits),
+	)
+
+	// Process through RIPPER algorithm
+	ripperResult, err := ize.ProcessRipper(req.Query, algoliaResults, log)
+	if err != nil {
+		log.ErrorWithErr("RIPPER processing failed", err, "query", req.Query)
+		http.Error(w, "RIPPER processing failed", http.StatusInternalServerError)
+		return
+	}
+
+	log.Debug("RIPPER processing completed",
+		"query", req.Query,
+		"groups_count", len(ripperResult.Groups),
+		"other_group_count", len(ripperResult.OtherGroup),
+	)
+
+	// Convert ize.RipperGroup to httpapi.RipperGroup
+	groups := make([]RipperGroup, len(ripperResult.Groups))
+	for i, group := range ripperResult.Groups {
+		items := make([]SearchResult, len(group.Items))
+		for j, item := range group.Items {
+			items[j] = SearchResult{
+				ID:          item.ID,
+				Name:        item.Name,
+				Description: item.Description,
+				Image:       item.Image,
+			}
+		}
+		groups[i] = RipperGroup{
+			FacetName:  group.FacetName,
+			FacetValue: group.FacetValue,
+			Items:      items,
+			// Use the TotalCount from the algorithm so the count shown
+			// in the UI reflects all items with this facet value in the
+			// current (possibly filtered) result set, not just the
+			// remaining unassigned items when the group was selected.
+			Count:      group.TotalCount,
+		}
+	}
+
+	// Convert ize.Result to httpapi.SearchResult for Other group
+	otherGroup := make([]SearchResult, len(ripperResult.OtherGroup))
+	for i, item := range ripperResult.OtherGroup {
+		otherGroup[i] = SearchResult{
+			ID:          item.ID,
+			Name:        item.Name,
+			Description: item.Description,
+			Image:       item.Image,
+		}
+	}
+
+	response := RipperResponse{
+		Groups:     groups,
+		OtherGroup: otherGroup,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.ErrorWithErr("failed to encode RIPPER response", err, "query", req.Query)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	log.Info("RIPPER request completed successfully",
+		"query", req.Query,
+		"groups_count", len(groups),
+		"other_group_count", len(otherGroup),
+	)
+}

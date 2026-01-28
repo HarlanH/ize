@@ -12,8 +12,18 @@
         <FacetedSearch
           :facets="facets"
           :selected="selectedFacetValues"
+          :active-tab="activeTab"
+          :ripper-groups="ripperGroups"
+          :ripper-other-group="ripperOtherGroup"
+          :ripper-loading="ripperLoading"
+          :ripper-error="ripperError"
+          :ripper-filter-path="ripperFilterPath"
           @toggle="onFacetToggle"
           @clear="clearFacetFilters"
+          @tab-change="onTabChange"
+          @ripper-select="onRipperSelect"
+          @ripper-select-other="onRipperSelectOther"
+          @ripper-clear="clearRipperFilters"
         />
       </div>
 
@@ -30,8 +40,8 @@ import { onMounted, ref } from 'vue'
 import SearchBar from './components/SearchBar.vue'
 import ResultsGrid from './components/ResultsGrid.vue'
 import FacetedSearch from './components/FacetedSearch.vue'
-import { searchWithFacetGroups } from './api/search'
-import type { SearchResult } from './types'
+import { searchWithFacetGroups, searchRipper } from './api/search'
+import type { SearchResult, RipperGroup } from './types'
 
 const results = ref<SearchResult[]>([])
 const loading = ref(false)
@@ -39,6 +49,15 @@ const error = ref<string | null>(null)
 const facets = ref<Record<string, Record<string, number>> | undefined>(undefined)
 const lastQuery = ref('')
 const selectedFacetValues = ref<Record<string, string[]>>({})
+
+// RIPPER state
+const activeTab = ref<'faceted' | 'ripper'>('faceted')
+const ripperGroups = ref<RipperGroup[] | undefined>(undefined)
+const ripperOtherGroup = ref<SearchResult[] | undefined>(undefined)
+const ripperLoading = ref(false)
+const ripperError = ref<string | null>(null)
+const ripperFilters = ref<string[][]>([]) // Track RIPPER filter path
+const ripperFilterPath = ref<string[]>([]) // Display path for UI
 
 function onFacetToggle(payload: { facet: string; value: string; checked: boolean }) {
   const curr = selectedFacetValues.value[payload.facet] ?? []
@@ -92,7 +111,97 @@ const handleSearch = async (query: string) => {
   lastQuery.value = normalized
   // New search resets filters for now.
   selectedFacetValues.value = {}
+  ripperFilters.value = []
+  ripperFilterPath.value = []
   await runSearch(normalized, [])
+  // If RIPPER tab is active, also run RIPPER search
+  if (activeTab.value === 'ripper') {
+    await runRipperSearch(normalized, [])
+  }
+}
+
+async function runRipperSearch(query: string, facetFilters: string[][] = []): Promise<boolean> {
+  ripperLoading.value = true
+  ripperError.value = null
+  try {
+    const response = await searchRipper(query, facetFilters)
+    ripperGroups.value = response.groups
+    ripperOtherGroup.value = response.otherGroup
+    return true
+  } catch (err) {
+    ripperError.value = err instanceof Error ? err.message : 'RIPPER search failed'
+    ripperGroups.value = undefined
+    ripperOtherGroup.value = undefined
+    return false
+  } finally {
+    ripperLoading.value = false
+  }
+}
+
+function onRipperSelect(payload: { facetName: string; facetValue: string }) {
+  // Add the selected facet filter to the RIPPER filter path
+  const filterString = `${payload.facetName}:${payload.facetValue}`
+  ripperFilters.value = [...ripperFilters.value, [filterString]]
+  ripperFilterPath.value = [...ripperFilterPath.value, filterString]
+  
+  // Re-run RIPPER search with the new filter (for next 5 groups)
+  void runRipperSearch(lastQuery.value, ripperFilters.value)
+
+  // Also update the main results grid to reflect the currently applied RIPPER filters
+  // (so the user sees the filtered result set as they drill down)
+  void runSearch(lastQuery.value, ripperFilters.value)
+}
+
+function onRipperSelectOther() {
+  // When "Other" is clicked, we want to show items that don't match any selected facet values
+  // Algolia supports negated facet filters using the "-" prefix: "facetName:-value"
+  // 
+  // We need to exclude all selected facet values. For each selected group,
+  // we add a negated filter for that facet value.
+  // 
+  // Example: If we have selected groups:
+  //   - brand:Samsung
+  //   - category:Electronics
+  // Then "Other" filters would be:
+  //   [["brand:-Samsung"], ["category:-Electronics"]]
+  // This means: brand != Samsung AND category != Electronics
+  
+  const excludeFilters: string[][] = []
+  if (ripperGroups.value) {
+    for (const group of ripperGroups.value) {
+      // Add negated filter for this facet value
+      const negatedFilter = `${group.facetName}:-${group.facetValue}`
+      excludeFilters.push([negatedFilter])
+    }
+  }
+  
+  // Combine RIPPER filters (if any) with the exclusion filters
+  // RIPPER filters narrow the set, exclusion filters remove selected groups
+  const combinedFilters = [...ripperFilters.value, ...excludeFilters]
+  
+  // Update the main results grid to show only "Other" items
+  void runSearch(lastQuery.value, combinedFilters)
+}
+
+function clearRipperFilters() {
+  ripperFilters.value = []
+  ripperFilterPath.value = []
+  // Re-run RIPPER search without filters
+  void runRipperSearch(lastQuery.value, [])
+  
+  // Reset the main results grid to the unfiltered set for the current query
+  void runSearch(lastQuery.value, [])
+}
+
+function onTabChange(tab: 'faceted' | 'ripper') {
+  activeTab.value = tab
+  // When switching to RIPPER tab, trigger RIPPER search if we have a query
+  if (tab === 'ripper' && lastQuery.value !== undefined) {
+    // Reset RIPPER filters when switching to RIPPER tab
+    ripperFilters.value = []
+    ripperFilterPath.value = []
+    void runRipperSearch(lastQuery.value, [])
+  }
 }
 
 onMounted(() => {
@@ -102,7 +211,15 @@ onMounted(() => {
 
   const tryInitialBrowse = async (attempt: number) => {
     const ok = await runSearch('', [])
-    if (ok) return
+    if (ok) {
+      // Also run RIPPER search if RIPPER tab is active
+      if (activeTab.value === 'ripper') {
+        ripperFilters.value = []
+        ripperFilterPath.value = []
+        await runRipperSearch('', [])
+      }
+      return
+    }
 
     // runSearch already sets error state; we just retry a few times in case
     // the frontend starts before the backend proxy is ready.

@@ -14,9 +14,10 @@ The "IZE" trademark for software (originally owned by Persoft, Inc. and later Re
 
 ## Architecture
 
-- Backend exposes a simple HTTP API (`/api/search`) that queries Algolia and processes results through the `ize` module
-- Frontend provides a three-region layout: search bar at top, empty refinement panel on left, results grid on right
-- The `ize` module currently acts as a pass-through but is designed to host re-ranking and other algorithm experiments
+- Backend exposes HTTP APIs (`/api/search` and `/api/ripper`) that query Algolia and process results through the `ize` module
+- Frontend provides a three-region layout: search bar at top, refinement panel on left with tabs for "Faceted Search" and "RIPPER", results grid on right
+- The `ize` module hosts algorithm experiments including:
+  - **RIPPER**: A greedy faceting algorithm that selects top 5 facet values maximizing information gain
 
 ## Setup
 
@@ -82,7 +83,8 @@ Search endpoint that queries Algolia and processes results through `ize`.
 **Request:**
 ```json
 {
-  "query": "search terms"
+  "query": "search terms",
+  "facetFilters": [["category:Electronics"], ["brand:Apple"]]
 }
 ```
 
@@ -96,18 +98,86 @@ Search endpoint that queries Algolia and processes results through `ize`.
       "description": "Product description",
       "image": "https://example.com/image.jpg"
     }
-  ]
+  ],
+  "facets": {
+    "category": {
+      "Electronics": 42,
+      "Clothing": 18
+    },
+    "brand": {
+      "Apple": 15,
+      "Samsung": 12
+    }
+  }
 }
 ```
+
+### POST /api/ripper
+
+RIPPER faceting endpoint that uses a greedy algorithm to select the top 5 facet values maximizing information gain. Requests 100 hits from Algolia for better coverage.
+
+**Request:**
+```json
+{
+  "query": "search terms",
+  "facetFilters": [["category:Electronics"]]
+}
+```
+
+**Response:**
+```json
+{
+  "groups": [
+    {
+      "facetName": "brand",
+      "facetValue": "Samsung",
+      "items": [...],
+      "count": 15
+    },
+    {
+      "facetName": "category",
+      "facetValue": "Phones",
+      "items": [...],
+      "count": 12
+    }
+  ],
+  "otherGroup": [...]
+}
+```
+
+**Algorithm Details:**
+- Uses entropy-based information gain to select facets
+- Greedily selects up to 5 facet values
+- Items are removed from consideration once assigned to a group
+- Minimum group size: 5% of total items (minimum 2)
+- "Other" group contains items not matching any selected facet values
 
 ### GET /health
 
 Health check endpoint.
 
+## Features
+
+### Faceted Search
+- Traditional faceted navigation with checkboxes
+- Multiple values within a facet use OR logic
+- Multiple facets combine with AND logic
+- Facet counts update based on current filters
+
+### RIPPER Algorithm
+- Greedy faceting algorithm inspired by RIPPER (1995)
+- Selects top 5 facet values that maximize information gain
+- Clicking a facet value applies the filter and re-runs RIPPER on filtered results
+- "Other" group shows items not matching any selected facets
+- Clicking "Other" applies negated filters to show only those items
+
 ## Development
 
-- The `ize` module in `backend/internal/ize` is where algorithm experiments will be added
-- The left panel in the frontend is reserved for future refinement controls
+- The `ize` module in `backend/internal/ize` hosts algorithm experiments
+  - `ripper.go`: RIPPER faceting algorithm implementation
+  - `ize.go`: Default pass-through processor
+- The left panel provides tabbed interface for different faceting approaches
 - Results are displayed in a grid on the right side
+- Debug logging is available for RIPPER algorithm (see `backend/DEBUGGING.md`)
 
 For detailed development guidelines, code standards, and AI agent workflows, see [AGENTS.md](AGENTS.md).

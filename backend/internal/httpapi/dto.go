@@ -19,3 +19,17 @@ type SearchResult struct {
 	Description string `json:"description"`
 	Image       string `json:"image"`
 }
+
+// RipperGroup represents a group of items sharing a facet value
+type RipperGroup struct {
+	FacetName  string         `json:"facetName"`
+	FacetValue string         `json:"facetValue"`
+	Items      []SearchResult `json:"items"`
+	Count      int            `json:"count"`
+}
+
+// RipperResponse represents the RIPPER algorithm response
+type RipperResponse struct {
+	Groups     []RipperGroup  `json:"groups"`
+	OtherGroup []SearchResult `json:"otherGroup"`
+}

@@ -26,3 +26,15 @@ export interface Facet {
   name: string
   values: FacetValue[]
 }
+
+export interface RipperGroup {
+  facetName: string
+  facetValue: string
+  items: SearchResult[]
+  count: number
+}
+
+export interface RipperResponse {
+  groups: RipperGroup[]
+  otherGroup: SearchResult[]
+}

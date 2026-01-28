@@ -14,12 +14,20 @@ import (
 
 // mockAlgoliaClient is a mock implementation of ClientInterface for testing
 type mockAlgoliaClient struct {
-	searchFunc func(ctx context.Context, query string, facetFilters [][]string) (*algolia.SearchResult, error)
+	searchFunc      func(ctx context.Context, query string, facetFilters [][]string) (*algolia.SearchResult, error)
+	searchRipperFunc func(ctx context.Context, query string, facetFilters [][]string) (*algolia.SearchResult, error)
 }
 
 func (m *mockAlgoliaClient) Search(ctx context.Context, query string, facetFilters [][]string) (*algolia.SearchResult, error) {
 	if m.searchFunc != nil {
 		return m.searchFunc(ctx, query, facetFilters)
+	}
+	return &algolia.SearchResult{Hits: []algolia.Hit{}}, nil
+}
+
+func (m *mockAlgoliaClient) SearchRipper(ctx context.Context, query string, facetFilters [][]string) (*algolia.SearchResult, error) {
+	if m.searchRipperFunc != nil {
+		return m.searchRipperFunc(ctx, query, facetFilters)
 	}
 	return &algolia.SearchResult{Hits: []algolia.Hit{}}, nil
 }

@@ -146,3 +146,140 @@ func (c *Client) Search(ctx context.Context, query string, facetFilters [][]stri
 		Facets: facets,
 	}, nil
 }
+
+// SearchRipper performs a search query against Algolia with 100 hits per page for RIPPER algorithm
+func (c *Client) SearchRipper(ctx context.Context, query string, facetFilters [][]string) (*SearchResult, error) {
+	log := c.logger.WithContext(ctx)
+	
+	log.Debug("executing algolia search for RIPPER",
+		"query", query,
+		"facet_filters", facetFilters,
+		"index_name", c.indexName,
+		"hits_per_page", 100,
+	)
+	
+	// Create SearchParamsObject with the query and 100 hits per page
+	allFacets := []string{"*"}
+	hitsPerPage := int32(100)
+
+	var facetFiltersParam *search.FacetFilters
+	if len(facetFilters) > 0 {
+		outer := make([]search.FacetFilters, 0, len(facetFilters))
+		for _, group := range facetFilters {
+			if len(group) == 0 {
+				continue
+			}
+			if len(group) == 1 {
+				outer = append(outer, *search.StringAsFacetFilters(group[0]))
+				continue
+			}
+
+			inner := make([]search.FacetFilters, 0, len(group))
+			for _, f := range group {
+				inner = append(inner, *search.StringAsFacetFilters(f))
+			}
+			outer = append(outer, *search.ArrayOfFacetFiltersAsFacetFilters(inner))
+		}
+		if len(outer) > 0 {
+			facetFiltersParam = search.ArrayOfFacetFiltersAsFacetFilters(outer)
+		}
+	}
+	// Request all attributes to be retrieved so facet values are included in hits
+	attributesToRetrieve := []string{"*"}
+	
+	searchParamsObject := search.SearchParamsObject{
+		Query:              &query,
+		Facets:             allFacets,
+		FacetFilters:       facetFiltersParam,
+		HitsPerPage:        &hitsPerPage,
+		AttributesToRetrieve: attributesToRetrieve,
+	}
+	searchParams := search.SearchParamsObjectAsSearchParams(&searchParamsObject)
+	
+	request := c.client.NewApiSearchSingleIndexRequest(c.indexName)
+	request = request.WithSearchParams(searchParams)
+	
+	res, err := c.client.SearchSingleIndex(request)
+	if err != nil {
+		log.ErrorWithErr("algolia search API call failed for RIPPER", err,
+			"query", query,
+			"index_name", c.indexName,
+		)
+		return nil, fmt.Errorf("algolia search failed: %w", err)
+	}
+
+	var hits []Hit
+	if res.Hits != nil {
+		hitsJSON, err := json.Marshal(res.Hits)
+		if err != nil {
+			log.ErrorWithErr("failed to marshal algolia hits", err,
+				"query", query,
+			)
+			return nil, fmt.Errorf("failed to marshal hits: %w", err)
+		}
+		
+		// Unmarshal into a slice of maps first to capture all fields
+		var rawHits []map[string]interface{}
+		if err := json.Unmarshal(hitsJSON, &rawHits); err != nil {
+			log.ErrorWithErr("failed to unmarshal algolia hits", err,
+				"query", query,
+			)
+			return nil, fmt.Errorf("failed to unmarshal hits: %w", err)
+		}
+		
+		// Convert to Hit structs, preserving all attributes in Facets map
+		hits = make([]Hit, 0, len(rawHits))
+		for _, rawHit := range rawHits {
+			hit := Hit{
+				Facets: make(map[string]interface{}),
+			}
+			
+			// Extract known fields
+			if objID, ok := rawHit["objectID"].(string); ok {
+				hit.ObjectID = objID
+			}
+			if name, ok := rawHit["name"].(string); ok {
+				hit.Name = name
+			}
+			if desc, ok := rawHit["description"].(string); ok {
+				hit.Description = desc
+			}
+			if img, ok := rawHit["image"].(string); ok {
+				hit.Image = img
+			}
+			
+			// Store all other fields (including facet attributes) in Facets map
+			knownFields := map[string]bool{
+				"objectID": true,
+				"name":     true,
+				"description": true,
+				"image":    true,
+				"_highlightResult": true,
+				"_snippetResult": true,
+				"_rankingInfo": true,
+			}
+			for key, value := range rawHit {
+				if !knownFields[key] {
+					hit.Facets[key] = value
+				}
+			}
+			
+			hits = append(hits, hit)
+		}
+	}
+
+	log.Debug("algolia search completed successfully for RIPPER",
+		"query", query,
+		"hits_count", len(hits),
+	)
+
+	var facets map[string]map[string]int32
+	if res.Facets != nil {
+		facets = *res.Facets
+	}
+
+	return &SearchResult{
+		Hits:   hits,
+		Facets: facets,
+	}, nil
+}

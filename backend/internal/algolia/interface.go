@@ -9,4 +9,6 @@ type ClientInterface interface {
 	// Example: [["brand:Apple","brand:Samsung"],["category:Phone"]] means
 	// (brand:Apple OR brand:Samsung) AND (category:Phone).
 	Search(ctx context.Context, query string, facetFilters [][]string) (*SearchResult, error)
+	// SearchRipper performs a search with 100 hits per page for RIPPER algorithm
+	SearchRipper(ctx context.Context, query string, facetFilters [][]string) (*SearchResult, error)
 }
