@@ -8,6 +8,10 @@ This is a demo application focused on e-commerce-style search with images. It co
 - **Backend**: Go HTTP server with an `ize` module for processing search results
 - **Frontend**: Vue 3 + TypeScript + Vite single-page application
 
+## Name & Trademark
+
+The "IZE" trademark for software (originally owned by Persoft, Inc. and later Retrieval Dynamics) is currently abandoned according to USPTO records. The name is technically available for use in the software space, though the original IZE was a legendary 1980s search tool whose brand heritage remains part of computing history.
+
 ## Architecture
 
 - Backend exposes a simple HTTP API (`/api/search`) that queries Algolia and processes results through the `ize` module
