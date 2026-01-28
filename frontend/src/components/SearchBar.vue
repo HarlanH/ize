@@ -40,14 +40,13 @@ const query = ref('')
 const loading = ref(false)
 
 const handleSubmit = () => {
-  if (query.value.trim()) {
-    loading.value = true
-    emit('search', query.value.trim())
-    // Reset loading after a short delay (actual loading handled by parent)
-    setTimeout(() => {
-      loading.value = false
-    }, 100)
-  }
+  loading.value = true
+  // Allow empty string search ("browse default ranking")
+  emit('search', query.value.trim())
+  // Reset loading after a short delay (actual loading handled by parent)
+  setTimeout(() => {
+    loading.value = false
+  }, 100)
 }
 
 const handleClear = () => {

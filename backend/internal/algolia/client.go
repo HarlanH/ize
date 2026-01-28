@@ -46,21 +46,53 @@ type Hit struct {
 
 // SearchResult represents the full search response from Algolia
 type SearchResult struct {
-	Hits []Hit `json:"hits"`
+	Hits   []Hit                       `json:"hits"`
+	Facets map[string]map[string]int32 `json:"facets,omitempty"`
 }
 
 // Search performs a search query against Algolia
-func (c *Client) Search(ctx context.Context, query string) (*SearchResult, error) {
+func (c *Client) Search(ctx context.Context, query string, facetFilters [][]string) (*SearchResult, error) {
 	log := c.logger.WithContext(ctx)
 	
 	log.Debug("executing algolia search",
 		"query", query,
+		"facet_filters", facetFilters,
 		"index_name", c.indexName,
 	)
 	
-	// Create SearchParamsObject with the query
+	// Create SearchParamsObject with the query.
+	// Request all facets so the UI can render facet counts.
+	// (Later we can scope this list to a configured set of facets.)
+	allFacets := []string{"*"}
+
+	var facetFiltersParam *search.FacetFilters
+	if len(facetFilters) > 0 {
+		// Represent `[[a,b], c]` style where outer array is AND and inner arrays are OR.
+		// Algolia v4 SDK uses a union type for this.
+		outer := make([]search.FacetFilters, 0, len(facetFilters))
+		for _, group := range facetFilters {
+			if len(group) == 0 {
+				continue
+			}
+			if len(group) == 1 {
+				outer = append(outer, *search.StringAsFacetFilters(group[0]))
+				continue
+			}
+
+			inner := make([]search.FacetFilters, 0, len(group))
+			for _, f := range group {
+				inner = append(inner, *search.StringAsFacetFilters(f))
+			}
+			outer = append(outer, *search.ArrayOfFacetFiltersAsFacetFilters(inner))
+		}
+		if len(outer) > 0 {
+			facetFiltersParam = search.ArrayOfFacetFiltersAsFacetFilters(outer)
+		}
+	}
 	searchParamsObject := search.SearchParamsObject{
 		Query: &query,
+		Facets: allFacets,
+		FacetFilters: facetFiltersParam,
 	}
 	searchParams := search.SearchParamsObjectAsSearchParams(&searchParamsObject)
 	
@@ -104,5 +136,13 @@ func (c *Client) Search(ctx context.Context, query string) (*SearchResult, error
 		"hits_count", len(hits),
 	)
 
-	return &SearchResult{Hits: hits}, nil
+	var facets map[string]map[string]int32
+	if res.Facets != nil {
+		facets = *res.Facets
+	}
+
+	return &SearchResult{
+		Hits:   hits,
+		Facets: facets,
+	}, nil
 }

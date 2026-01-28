@@ -43,16 +43,13 @@ func (h *SearchHandler) HandleSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Query == "" {
-		log.Warn("empty query received")
-		http.Error(w, "Query is required", http.StatusBadRequest)
-		return
-	}
-
-	log.Debug("processing search request", "query", req.Query)
+	log.Debug("processing search request",
+		"query", req.Query,
+		"facet_filters", req.FacetFilters,
+	)
 
 	// Search Algolia
-	algoliaResults, err := h.algoliaClient.Search(r.Context(), req.Query)
+	algoliaResults, err := h.algoliaClient.Search(r.Context(), req.Query, req.FacetFilters)
 	if err != nil {
 		log.ErrorWithErr("algolia search failed", err, "query", req.Query)
 		http.Error(w, "Search failed", http.StatusInternalServerError)
@@ -84,7 +81,8 @@ func (h *SearchHandler) HandleSearch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := SearchResponse{
-		Hits: results,
+		Hits:   results,
+		Facets: algoliaResults.Facets,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

@@ -14,12 +14,12 @@ import (
 
 // mockAlgoliaClient is a mock implementation of ClientInterface for testing
 type mockAlgoliaClient struct {
-	searchFunc func(ctx context.Context, query string) (*algolia.SearchResult, error)
+	searchFunc func(ctx context.Context, query string, facetFilters [][]string) (*algolia.SearchResult, error)
 }
 
-func (m *mockAlgoliaClient) Search(ctx context.Context, query string) (*algolia.SearchResult, error) {
+func (m *mockAlgoliaClient) Search(ctx context.Context, query string, facetFilters [][]string) (*algolia.SearchResult, error) {
 	if m.searchFunc != nil {
-		return m.searchFunc(ctx, query)
+		return m.searchFunc(ctx, query, facetFilters)
 	}
 	return &algolia.SearchResult{Hits: []algolia.Hit{}}, nil
 }
@@ -28,14 +28,14 @@ func TestSearchHandler_HandleSearch(t *testing.T) {
 	tests := []struct {
 		name           string
 		requestBody    SearchRequest
-		mockSearchFunc func(ctx context.Context, query string) (*algolia.SearchResult, error)
+		mockSearchFunc func(ctx context.Context, query string, facetFilters [][]string) (*algolia.SearchResult, error)
 		wantStatus     int
 		wantHitsCount  int
 	}{
 		{
 			name:        "successful search",
 			requestBody: SearchRequest{Query: "test"},
-			mockSearchFunc: func(ctx context.Context, query string) (*algolia.SearchResult, error) {
+			mockSearchFunc: func(ctx context.Context, query string, facetFilters [][]string) (*algolia.SearchResult, error) {
 				return &algolia.SearchResult{
 					Hits: []algolia.Hit{
 						{
@@ -53,13 +53,13 @@ func TestSearchHandler_HandleSearch(t *testing.T) {
 		{
 			name:        "empty query",
 			requestBody: SearchRequest{Query: ""},
-			wantStatus:   http.StatusBadRequest,
+			wantStatus:   http.StatusOK,
 			wantHitsCount: 0,
 		},
 		{
 			name:        "empty results",
 			requestBody: SearchRequest{Query: "test"},
-			mockSearchFunc: func(ctx context.Context, query string) (*algolia.SearchResult, error) {
+			mockSearchFunc: func(ctx context.Context, query string, facetFilters [][]string) (*algolia.SearchResult, error) {
 				return &algolia.SearchResult{Hits: []algolia.Hit{}}, nil
 			},
 			wantStatus:    http.StatusOK,

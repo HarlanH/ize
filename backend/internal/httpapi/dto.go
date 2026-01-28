@@ -2,12 +2,14 @@ package httpapi
 
 // SearchRequest represents the incoming search request
 type SearchRequest struct {
-	Query string `json:"query"`
+	Query        string   `json:"query"`
+	FacetFilters [][]string `json:"facetFilters,omitempty"`
 }
 
 // SearchResponse represents the search response
 type SearchResponse struct {
-	Hits []SearchResult `json:"hits"`
+	Hits   []SearchResult             `json:"hits"`
+	Facets map[string]map[string]int32 `json:"facets,omitempty"`
 }
 
 // SearchResult represents a single search result
