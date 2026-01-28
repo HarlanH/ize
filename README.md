@@ -105,3 +105,5 @@ Health check endpoint.
 - The `ize` module in `backend/internal/ize` is where algorithm experiments will be added
 - The left panel in the frontend is reserved for future refinement controls
 - Results are displayed in a grid on the right side
+
+For detailed development guidelines, code standards, and AI agent workflows, see [AGENTS.md](AGENTS.md).
