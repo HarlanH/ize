@@ -23,6 +23,20 @@ bd create "Issue title" -p 1 --deps discovered-from:bd-123 --json
 ```
 **Note:** Default priority is P2 (Medium) if not specified.
 
+**Dependency types (IMPORTANT):**
+- Valid dependency types are: `blocks`, `related`, `parent-child`, `discovered-from`
+- There is **no** `depends-on` dependency type (don’t use it)
+
+**Common patterns:**
+```bash
+# Epic + child task
+bd create "My epic" -t epic -p 1 --json
+bd create "My task" -t task -p 1 --deps parent-child:<epic-id> --json
+
+# Sequencing work (A must be done before B)
+bd dep add <issue-b> <issue-a> -t blocks --json
+```
+
 **Claim and update:**
 ```bash
 bd update bd-42 --status in_progress --json
