@@ -33,3 +33,25 @@ type RipperResponse struct {
 	Groups     []RipperGroup  `json:"groups"`
 	OtherGroup []SearchResult `json:"otherGroup"`
 }
+
+// FacetCount represents a facet:value pair with its count and percentage
+type FacetCount struct {
+	FacetName  string  `json:"facetName"`
+	FacetValue string  `json:"facetValue"`
+	Count      int     `json:"count"`
+	Percentage float64 `json:"percentage"`
+}
+
+// ClusterGroup represents a cluster of items with similar facet profiles
+type ClusterGroup struct {
+	Name      string         `json:"name"`      // LLM-generated label
+	Items     []SearchResult `json:"items"`
+	TopFacets []FacetCount   `json:"topFacets"` // For transparency
+}
+
+// ClusterResponse represents the clustering algorithm response
+type ClusterResponse struct {
+	Groups       []ClusterGroup `json:"groups"`
+	OtherGroup   []SearchResult `json:"otherGroup"`
+	ClusterCount int            `json:"clusterCount"` // Selected k value
+}

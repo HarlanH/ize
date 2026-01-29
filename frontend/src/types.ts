@@ -38,3 +38,22 @@ export interface RipperResponse {
   groups: RipperGroup[]
   otherGroup: SearchResult[]
 }
+
+export interface FacetCount {
+  facetName: string
+  facetValue: string
+  count: number
+  percentage: number
+}
+
+export interface ClusterGroup {
+  name: string
+  items: SearchResult[]
+  topFacets: FacetCount[]
+}
+
+export interface ClusterResponse {
+  groups: ClusterGroup[]
+  otherGroup: SearchResult[]
+  clusterCount: number
+}

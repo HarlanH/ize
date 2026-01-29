@@ -5,25 +5,39 @@ import (
 	"net/http"
 
 	"ize/internal/algolia"
+	"ize/internal/anthropic"
 	"ize/internal/config"
 	"ize/internal/ize"
 	"ize/internal/logger"
 )
 
 type SearchHandler struct {
-	algoliaClient algolia.ClientInterface
-	logger        *logger.Logger
+	algoliaClient   algolia.ClientInterface
+	anthropicClient anthropic.ClientInterface
+	logger          *logger.Logger
 }
 
 func NewSearchHandler(cfg *config.Config, log *logger.Logger) (*SearchHandler, error) {
-	client, err := algolia.NewClient(cfg.AlgoliaAppID, cfg.AlgoliaAPIKey, cfg.AlgoliaIndexName, log)
+	algoliaClient, err := algolia.NewClient(cfg.AlgoliaAppID, cfg.AlgoliaAPIKey, cfg.AlgoliaIndexName, log)
 	if err != nil {
 		return nil, err
 	}
 
+	// Anthropic client is optional - cluster naming will use fallback if not configured
+	var anthropicClient anthropic.ClientInterface
+	if cfg.AnthropicAPIKey != "" {
+		anthropicClient, err = anthropic.NewClient(cfg.AnthropicAPIKey, log)
+		if err != nil {
+			log.Warn("failed to create anthropic client, cluster naming will use fallback", "error", err)
+		}
+	} else {
+		log.Info("anthropic API key not configured, cluster naming will use fallback labels")
+	}
+
 	return &SearchHandler{
-		algoliaClient: client,
-		logger:        log,
+		algoliaClient:   algoliaClient,
+		anthropicClient: anthropicClient,
+		logger:          log,
 	}, nil
 }
 
@@ -196,6 +210,145 @@ func (h *SearchHandler) HandleRipper(w http.ResponseWriter, r *http.Request) {
 	log.Info("RIPPER request completed successfully",
 		"query", req.Query,
 		"groups_count", len(groups),
+		"other_group_count", len(otherGroup),
+	)
+}
+
+func (h *SearchHandler) HandleCluster(w http.ResponseWriter, r *http.Request) {
+	log := h.logger.WithContext(r.Context())
+
+	if r.Method != http.MethodPost {
+		log.Warn("method not allowed", "method", r.Method)
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req SearchRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.ErrorWithErr("failed to decode request body", err)
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	log.Debug("processing Cluster request",
+		"query", req.Query,
+		"facet_filters", req.FacetFilters,
+	)
+
+	// Search Algolia with 100 hits per page (same as RIPPER)
+	algoliaResults, err := h.algoliaClient.SearchRipper(r.Context(), req.Query, req.FacetFilters)
+	if err != nil {
+		log.ErrorWithErr("algolia search failed for Cluster", err, "query", req.Query)
+		http.Error(w, "Search failed", http.StatusInternalServerError)
+		return
+	}
+
+	log.Debug("algolia search completed for Cluster",
+		"query", req.Query,
+		"hits_count", len(algoliaResults.Hits),
+	)
+
+	// Process through clustering algorithm
+	clusterResult, err := ize.ProcessCluster(req.Query, algoliaResults, log)
+	if err != nil {
+		log.ErrorWithErr("Cluster processing failed", err, "query", req.Query)
+		http.Error(w, "Cluster processing failed", http.StatusInternalServerError)
+		return
+	}
+
+	log.Debug("Cluster processing completed",
+		"query", req.Query,
+		"cluster_count", clusterResult.ClusterCount,
+		"other_group_count", len(clusterResult.OtherGroup),
+	)
+
+	// Generate LLM-based cluster names if Anthropic client is available
+	if h.anthropicClient != nil && len(clusterResult.Groups) > 0 {
+		statsSlice := make([]anthropic.ClusterStats, len(clusterResult.Groups))
+		for i, group := range clusterResult.Groups {
+			facetInfos := make([]anthropic.FacetInfo, len(group.TopFacets))
+			for j, f := range group.TopFacets {
+				facetInfos[j] = anthropic.FacetInfo{
+					Name:       f.FacetName,
+					Value:      f.FacetValue,
+					Percentage: f.Percentage,
+				}
+			}
+			statsSlice[i] = anthropic.ClusterStats{
+				Size:      group.Stats.Size,
+				TopFacets: facetInfos,
+			}
+		}
+
+		names, err := h.anthropicClient.GenerateClusterNames(r.Context(), statsSlice)
+		if err != nil {
+			log.Warn("failed to generate cluster names, using fallbacks", "error", err)
+		} else {
+			for i, name := range names {
+				if i < len(clusterResult.Groups) {
+					clusterResult.Groups[i].Name = name
+				}
+			}
+		}
+	}
+
+	// Convert ize.ClusterGroup to httpapi.ClusterGroup
+	groups := make([]ClusterGroup, len(clusterResult.Groups))
+	for i, group := range clusterResult.Groups {
+		items := make([]SearchResult, len(group.Items))
+		for j, item := range group.Items {
+			items[j] = SearchResult{
+				ID:          item.ID,
+				Name:        item.Name,
+				Description: item.Description,
+				Image:       item.Image,
+			}
+		}
+
+		topFacets := make([]FacetCount, len(group.TopFacets))
+		for j, f := range group.TopFacets {
+			topFacets[j] = FacetCount{
+				FacetName:  f.FacetName,
+				FacetValue: f.FacetValue,
+				Count:      f.Count,
+				Percentage: f.Percentage,
+			}
+		}
+
+		groups[i] = ClusterGroup{
+			Name:      group.Name,
+			Items:     items,
+			TopFacets: topFacets,
+		}
+	}
+
+	// Convert ize.Result to httpapi.SearchResult for Other group
+	otherGroup := make([]SearchResult, len(clusterResult.OtherGroup))
+	for i, item := range clusterResult.OtherGroup {
+		otherGroup[i] = SearchResult{
+			ID:          item.ID,
+			Name:        item.Name,
+			Description: item.Description,
+			Image:       item.Image,
+		}
+	}
+
+	response := ClusterResponse{
+		Groups:       groups,
+		OtherGroup:   otherGroup,
+		ClusterCount: clusterResult.ClusterCount,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.ErrorWithErr("failed to encode Cluster response", err, "query", req.Query)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	log.Info("Cluster request completed successfully",
+		"query", req.Query,
+		"cluster_count", len(groups),
 		"other_group_count", len(otherGroup),
 	)
 }

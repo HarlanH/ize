@@ -18,12 +18,21 @@
           :ripper-loading="ripperLoading"
           :ripper-error="ripperError"
           :ripper-filter-path="ripperFilterPath"
+          :cluster-groups="clusterGroups"
+          :cluster-other-group="clusterOtherGroup"
+          :cluster-count="clusterCount"
+          :cluster-loading="clusterLoading"
+          :cluster-error="clusterError"
+          :cluster-selected-name="clusterSelectedName"
           @toggle="onFacetToggle"
           @clear="clearFacetFilters"
           @tab-change="onTabChange"
           @ripper-select="onRipperSelect"
           @ripper-select-other="onRipperSelectOther"
           @ripper-clear="clearRipperFilters"
+          @cluster-select="onClusterSelect"
+          @cluster-select-other="onClusterSelectOther"
+          @cluster-clear="clearClusterSelection"
         />
       </div>
 
@@ -40,8 +49,8 @@ import { onMounted, ref } from 'vue'
 import SearchBar from './components/SearchBar.vue'
 import ResultsGrid from './components/ResultsGrid.vue'
 import FacetedSearch from './components/FacetedSearch.vue'
-import { searchWithFacetGroups, searchRipper } from './api/search'
-import type { SearchResult, RipperGroup } from './types'
+import { searchWithFacetGroups, searchRipper, searchCluster } from './api/search'
+import type { SearchResult, RipperGroup, ClusterGroup } from './types'
 
 const results = ref<SearchResult[]>([])
 const loading = ref(false)
@@ -51,13 +60,22 @@ const lastQuery = ref('')
 const selectedFacetValues = ref<Record<string, string[]>>({})
 
 // RIPPER state
-const activeTab = ref<'faceted' | 'ripper'>('faceted')
+const activeTab = ref<'faceted' | 'ripper' | 'cluster'>('faceted')
 const ripperGroups = ref<RipperGroup[] | undefined>(undefined)
 const ripperOtherGroup = ref<SearchResult[] | undefined>(undefined)
 const ripperLoading = ref(false)
 const ripperError = ref<string | null>(null)
 const ripperFilters = ref<string[][]>([]) // Track RIPPER filter path
 const ripperFilterPath = ref<string[]>([]) // Display path for UI
+
+// Cluster state
+const clusterGroups = ref<ClusterGroup[] | undefined>(undefined)
+const clusterOtherGroup = ref<SearchResult[] | undefined>(undefined)
+const clusterCount = ref<number>(0)
+const clusterLoading = ref(false)
+const clusterError = ref<string | null>(null)
+const clusterSelectedName = ref<string | null>(null) // Track selected cluster for Clear button
+const allClusterResults = ref<SearchResult[]>([]) // Store all results to restore on clear
 
 function onFacetToggle(payload: { facet: string; value: string; checked: boolean }) {
   const curr = selectedFacetValues.value[payload.facet] ?? []
@@ -117,6 +135,10 @@ const handleSearch = async (query: string) => {
   // If RIPPER tab is active, also run RIPPER search
   if (activeTab.value === 'ripper') {
     await runRipperSearch(normalized, [])
+  }
+  // If Cluster tab is active, also run Cluster search
+  if (activeTab.value === 'cluster') {
+    await runClusterSearch(normalized, [])
   }
 }
 
@@ -193,7 +215,7 @@ function clearRipperFilters() {
   void runSearch(lastQuery.value, [])
 }
 
-function onTabChange(tab: 'faceted' | 'ripper') {
+function onTabChange(tab: 'faceted' | 'ripper' | 'cluster') {
   activeTab.value = tab
   // When switching to RIPPER tab, trigger RIPPER search if we have a query
   if (tab === 'ripper' && lastQuery.value !== undefined) {
@@ -202,6 +224,62 @@ function onTabChange(tab: 'faceted' | 'ripper') {
     ripperFilterPath.value = []
     void runRipperSearch(lastQuery.value, [])
   }
+  // When switching to Cluster tab, trigger Cluster search if we have a query
+  if (tab === 'cluster' && lastQuery.value !== undefined) {
+    void runClusterSearch(lastQuery.value, [])
+  }
+}
+
+async function runClusterSearch(query: string, facetFilters: string[][] = []): Promise<boolean> {
+  clusterLoading.value = true
+  clusterError.value = null
+  try {
+    const response = await searchCluster(query, facetFilters)
+    clusterGroups.value = response.groups
+    clusterOtherGroup.value = response.otherGroup
+    clusterCount.value = response.clusterCount
+    return true
+  } catch (err) {
+    clusterError.value = err instanceof Error ? err.message : 'Cluster search failed'
+    clusterGroups.value = undefined
+    clusterOtherGroup.value = undefined
+    clusterCount.value = 0
+    return false
+  } finally {
+    clusterLoading.value = false
+  }
+}
+
+function onClusterSelect(payload: { index: number; name: string }) {
+  // When a cluster is selected, show its items in the results grid
+  if (clusterGroups.value && clusterGroups.value[payload.index]) {
+    // Store all results before filtering (if not already stored)
+    if (!clusterSelectedName.value) {
+      allClusterResults.value = [...results.value]
+    }
+    results.value = clusterGroups.value[payload.index].items
+    clusterSelectedName.value = payload.name
+  }
+}
+
+function onClusterSelectOther() {
+  // When "Other" is clicked, show the other group items in the results grid
+  if (clusterOtherGroup.value) {
+    // Store all results before filtering (if not already stored)
+    if (!clusterSelectedName.value) {
+      allClusterResults.value = [...results.value]
+    }
+    results.value = clusterOtherGroup.value
+    clusterSelectedName.value = 'Other'
+  }
+}
+
+function clearClusterSelection() {
+  // Restore all results and clear selection
+  if (allClusterResults.value.length > 0) {
+    results.value = allClusterResults.value
+  }
+  clusterSelectedName.value = null
 }
 
 onMounted(() => {
@@ -217,6 +295,10 @@ onMounted(() => {
         ripperFilters.value = []
         ripperFilterPath.value = []
         await runRipperSearch('', [])
+      }
+      // Also run Cluster search if Cluster tab is active
+      if (activeTab.value === 'cluster') {
+        await runClusterSearch('', [])
       }
       return
     }

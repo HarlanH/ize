@@ -9,10 +9,11 @@ import (
 )
 
 type Config struct {
-	AlgoliaAppID    string `json:"algolia_app_id"`
-	AlgoliaAPIKey   string `json:"algolia_api_key"`
+	AlgoliaAppID     string `json:"algolia_app_id"`
+	AlgoliaAPIKey    string `json:"algolia_api_key"`
 	AlgoliaIndexName string `json:"algolia_index_name"`
-	Port            string `json:"port"`
+	AnthropicAPIKey  string `json:"anthropic_api_key"`
+	Port             string `json:"port"`
 }
 
 func Load() (*Config, error) {
@@ -48,6 +49,10 @@ func Load() (*Config, error) {
 	if port := os.Getenv("PORT"); port != "" {
 		cfg.Port = port
 		envVarsSet = append(envVarsSet, "PORT")
+	}
+	if anthropicKey := os.Getenv("ANTHROPIC_API_KEY"); anthropicKey != "" {
+		cfg.AnthropicAPIKey = anthropicKey
+		envVarsSet = append(envVarsSet, "ANTHROPIC_API_KEY")
 	}
 	
 	if len(envVarsSet) > 0 {

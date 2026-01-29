@@ -17,6 +17,14 @@
       >
         RIPPER
       </button>
+      <button
+        class="tab"
+        :class="{ 'tab--active': activeTab === 'cluster' }"
+        type="button"
+        @click="emit('tab-change', 'cluster')"
+      >
+        Clustered
+      </button>
     </div>
 
     <div v-if="activeTab === 'faceted'" class="faceted-content">
@@ -77,6 +85,31 @@
           @select-other="emit('ripper-select-other')"
         />
     </div>
+
+    <div v-else-if="activeTab === 'cluster'" class="cluster-content">
+      <div v-if="clusterSelectedName" class="cluster-filters">
+        <button
+          class="btn-clear btn-clear--cluster"
+          type="button"
+          @click="emit('cluster-clear')"
+          title="Clear cluster selection"
+        >
+          Clear
+        </button>
+        <div class="cluster-filters__selected">
+          Showing: <strong>{{ clusterSelectedName }}</strong>
+        </div>
+      </div>
+      <ClusterView
+        :groups="clusterGroups"
+        :other-group="clusterOtherGroup"
+        :cluster-count="clusterCount"
+        :loading="clusterLoading"
+        :error="clusterError"
+        @select="emit('cluster-select', $event)"
+        @select-other="emit('cluster-select-other')"
+      />
+    </div>
   </div>
 </template>
 
@@ -84,26 +117,36 @@
 import { computed } from 'vue'
 import Facet from './Facet.vue'
 import RipperView from './RipperView.vue'
-import type { Facet as FacetType, RipperGroup, SearchResult } from '../types'
+import ClusterView from './ClusterView.vue'
+import type { Facet as FacetType, RipperGroup, ClusterGroup, SearchResult } from '../types'
 
 const props = defineProps<{
   facets?: Record<string, Record<string, number>>
   selected: Record<string, string[]>
-  activeTab?: 'faceted' | 'ripper'
+  activeTab?: 'faceted' | 'ripper' | 'cluster'
   ripperGroups?: RipperGroup[]
   ripperOtherGroup?: SearchResult[]
   ripperLoading?: boolean
   ripperError?: string | null
   ripperFilterPath?: string[]
+  clusterGroups?: ClusterGroup[]
+  clusterOtherGroup?: SearchResult[]
+  clusterCount?: number
+  clusterLoading?: boolean
+  clusterError?: string | null
+  clusterSelectedName?: string | null
 }>()
 
 const emit = defineEmits<{
   (e: 'toggle', payload: { facet: string; value: string; checked: boolean }): void
   (e: 'clear'): void
-  (e: 'tab-change', tab: 'faceted' | 'ripper'): void
+  (e: 'tab-change', tab: 'faceted' | 'ripper' | 'cluster'): void
   (e: 'ripper-select', payload: { facetName: string; facetValue: string }): void
   (e: 'ripper-select-other'): void
   (e: 'ripper-clear'): void
+  (e: 'cluster-select', payload: { index: number; name: string }): void
+  (e: 'cluster-select-other'): void
+  (e: 'cluster-clear'): void
 }>()
 
 const activeTab = computed(() => props.activeTab ?? 'faceted')
@@ -119,6 +162,8 @@ const facetList = computed<FacetType[]>(() => {
       return { name, values }
     })
 })
+
+const clusterSelectedName = computed(() => props.clusterSelectedName ?? null)
 
 const selectedCount = computed(() => {
   return Object.values(props.selected).reduce((sum, arr) => sum + (arr?.length ?? 0), 0)
@@ -194,7 +239,8 @@ const canClear = computed(() => selectedCount.value > 0)
 }
 
 .faceted-content,
-.ripper-content {
+.ripper-content,
+.cluster-content {
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -235,8 +281,27 @@ const canClear = computed(() => selectedCount.value > 0)
   margin: 0 0.25rem;
 }
 
-.btn-clear--ripper {
+.btn-clear--ripper,
+.btn-clear--cluster {
   align-self: flex-start;
+}
+
+.cluster-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.cluster-filters__selected {
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.cluster-filters__selected strong {
+  color: #333;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -250,6 +315,18 @@ const canClear = computed(() => selectedCount.value > 0)
 
   .ripper-filters__separator {
     color: #666;
+  }
+
+  .cluster-filters {
+    border-bottom-color: #333;
+  }
+
+  .cluster-filters__selected {
+    color: #aaa;
+  }
+
+  .cluster-filters__selected strong {
+    color: #eee;
   }
 }
 
