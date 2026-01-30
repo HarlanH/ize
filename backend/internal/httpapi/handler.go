@@ -43,7 +43,7 @@ func NewSearchHandler(cfg *config.Config, log *logger.Logger) (*SearchHandler, e
 
 func (h *SearchHandler) HandleSearch(w http.ResponseWriter, r *http.Request) {
 	log := h.logger.WithContext(r.Context())
-	
+
 	if r.Method != http.MethodPost {
 		log.Warn("method not allowed", "method", r.Method)
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -114,7 +114,7 @@ func (h *SearchHandler) HandleSearch(w http.ResponseWriter, r *http.Request) {
 
 func (h *SearchHandler) HandleRipper(w http.ResponseWriter, r *http.Request) {
 	log := h.logger.WithContext(r.Context())
-	
+
 	if r.Method != http.MethodPost {
 		log.Warn("method not allowed", "method", r.Method)
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -180,7 +180,7 @@ func (h *SearchHandler) HandleRipper(w http.ResponseWriter, r *http.Request) {
 			// in the UI reflects all items with this facet value in the
 			// current (possibly filtered) result set, not just the
 			// remaining unassigned items when the group was selected.
-			Count:      group.TotalCount,
+			Count: group.TotalCount,
 		}
 	}
 
@@ -315,10 +315,29 @@ func (h *SearchHandler) HandleCluster(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		// Convert rule and quality if present
+		var rule [][]string
+		var ruleDescription string
+		var ruleQuality *RuleQuality
+		if group.Rule != nil {
+			rule = group.Rule.ToAlgoliaFilter()
+			ruleDescription = group.Rule.String()
+		}
+		if group.RuleQuality != nil {
+			ruleQuality = &RuleQuality{
+				Precision: group.RuleQuality.Precision,
+				Recall:    group.RuleQuality.Recall,
+				F1:        group.RuleQuality.F1,
+			}
+		}
+
 		groups[i] = ClusterGroup{
-			Name:      group.Name,
-			Items:     items,
-			TopFacets: topFacets,
+			Name:            group.Name,
+			Items:           items,
+			TopFacets:       topFacets,
+			Rule:            rule,
+			RuleDescription: ruleDescription,
+			RuleQuality:     ruleQuality,
 		}
 	}
 

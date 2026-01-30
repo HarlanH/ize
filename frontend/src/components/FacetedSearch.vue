@@ -106,6 +106,7 @@
         :cluster-count="clusterCount"
         :loading="clusterLoading"
         :error="clusterError"
+        :selected-name="clusterSelectedName"
         @select="emit('cluster-select', $event)"
         @select-other="emit('cluster-select-other')"
       />
@@ -144,7 +145,7 @@ const emit = defineEmits<{
   (e: 'ripper-select', payload: { facetName: string; facetValue: string }): void
   (e: 'ripper-select-other'): void
   (e: 'ripper-clear'): void
-  (e: 'cluster-select', payload: { index: number; name: string }): void
+  (e: 'cluster-select', payload: { index: number; name: string; rule?: string[][] }): void
   (e: 'cluster-select-other'): void
   (e: 'cluster-clear'): void
 }>()

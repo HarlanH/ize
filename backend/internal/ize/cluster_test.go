@@ -461,3 +461,339 @@ func TestCutDendrogram(t *testing.T) {
 		t.Errorf("cutDendrogram(k=2) total items = %d, want 4", totalItems)
 	}
 }
+
+// Tests for DecisionList
+
+func TestDecisionList_ToAlgoliaFilter(t *testing.T) {
+	tests := []struct {
+		name     string
+		rule     DecisionList
+		expected [][]string
+	}{
+		{
+			name:     "empty rule",
+			rule:     DecisionList{},
+			expected: nil,
+		},
+		{
+			name: "single facet single value",
+			rule: DecisionList{
+				Clauses: []Clause{
+					{FacetName: "brand", Values: []string{"Samsung"}},
+				},
+			},
+			expected: [][]string{{"brand:Samsung"}},
+		},
+		{
+			name: "single facet multiple values",
+			rule: DecisionList{
+				Clauses: []Clause{
+					{FacetName: "brand", Values: []string{"Samsung", "LG"}},
+				},
+			},
+			expected: [][]string{{"brand:Samsung", "brand:LG"}},
+		},
+		{
+			name: "multiple facets",
+			rule: DecisionList{
+				Clauses: []Clause{
+					{FacetName: "brand", Values: []string{"Samsung", "LG"}},
+					{FacetName: "color", Values: []string{"Black"}},
+				},
+			},
+			expected: [][]string{{"brand:Samsung", "brand:LG"}, {"color:Black"}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.rule.ToAlgoliaFilter()
+			if len(result) != len(tt.expected) {
+				t.Errorf("ToAlgoliaFilter() length = %d, want %d", len(result), len(tt.expected))
+				return
+			}
+			for i := range result {
+				if len(result[i]) != len(tt.expected[i]) {
+					t.Errorf("ToAlgoliaFilter()[%d] length = %d, want %d", i, len(result[i]), len(tt.expected[i]))
+					continue
+				}
+				for j := range result[i] {
+					if result[i][j] != tt.expected[i][j] {
+						t.Errorf("ToAlgoliaFilter()[%d][%d] = %q, want %q", i, j, result[i][j], tt.expected[i][j])
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestDecisionList_Matches(t *testing.T) {
+	tests := []struct {
+		name     string
+		rule     DecisionList
+		facetSet FacetSet
+		expected bool
+	}{
+		{
+			name:     "empty rule matches everything",
+			rule:     DecisionList{},
+			facetSet: FacetSet{"brand:Samsung": true, "color:Black": true},
+			expected: true,
+		},
+		{
+			name: "single clause matches",
+			rule: DecisionList{
+				Clauses: []Clause{
+					{FacetName: "brand", Values: []string{"Samsung"}},
+				},
+			},
+			facetSet: FacetSet{"brand:Samsung": true, "color:Black": true},
+			expected: true,
+		},
+		{
+			name: "single clause no match",
+			rule: DecisionList{
+				Clauses: []Clause{
+					{FacetName: "brand", Values: []string{"Apple"}},
+				},
+			},
+			facetSet: FacetSet{"brand:Samsung": true, "color:Black": true},
+			expected: false,
+		},
+		{
+			name: "OR within clause - first value matches",
+			rule: DecisionList{
+				Clauses: []Clause{
+					{FacetName: "brand", Values: []string{"Samsung", "LG"}},
+				},
+			},
+			facetSet: FacetSet{"brand:Samsung": true},
+			expected: true,
+		},
+		{
+			name: "OR within clause - second value matches",
+			rule: DecisionList{
+				Clauses: []Clause{
+					{FacetName: "brand", Values: []string{"Samsung", "LG"}},
+				},
+			},
+			facetSet: FacetSet{"brand:LG": true},
+			expected: true,
+		},
+		{
+			name: "AND across clauses - both match",
+			rule: DecisionList{
+				Clauses: []Clause{
+					{FacetName: "brand", Values: []string{"Samsung"}},
+					{FacetName: "color", Values: []string{"Black"}},
+				},
+			},
+			facetSet: FacetSet{"brand:Samsung": true, "color:Black": true},
+			expected: true,
+		},
+		{
+			name: "AND across clauses - only first matches",
+			rule: DecisionList{
+				Clauses: []Clause{
+					{FacetName: "brand", Values: []string{"Samsung"}},
+					{FacetName: "color", Values: []string{"Black"}},
+				},
+			},
+			facetSet: FacetSet{"brand:Samsung": true, "color:White": true},
+			expected: false,
+		},
+		{
+			name: "complex rule",
+			rule: DecisionList{
+				Clauses: []Clause{
+					{FacetName: "brand", Values: []string{"Samsung", "LG"}},
+					{FacetName: "color", Values: []string{"Black", "White"}},
+					{FacetName: "size", Values: []string{"Large"}},
+				},
+			},
+			facetSet: FacetSet{"brand:LG": true, "color:Black": true, "size:Large": true},
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.rule.Matches(tt.facetSet)
+			if result != tt.expected {
+				t.Errorf("Matches() = %v, want %v", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestDecisionList_String(t *testing.T) {
+	tests := []struct {
+		name     string
+		rule     DecisionList
+		expected string
+	}{
+		{
+			name:     "empty rule",
+			rule:     DecisionList{},
+			expected: "(empty rule)",
+		},
+		{
+			name: "single value",
+			rule: DecisionList{
+				Clauses: []Clause{
+					{FacetName: "brand", Values: []string{"Samsung"}},
+				},
+			},
+			expected: "brand:Samsung",
+		},
+		{
+			name: "OR values",
+			rule: DecisionList{
+				Clauses: []Clause{
+					{FacetName: "brand", Values: []string{"Samsung", "LG"}},
+				},
+			},
+			expected: "(brand:Samsung OR brand:LG)",
+		},
+		{
+			name: "AND clauses",
+			rule: DecisionList{
+				Clauses: []Clause{
+					{FacetName: "brand", Values: []string{"Samsung"}},
+					{FacetName: "color", Values: []string{"Black"}},
+				},
+			},
+			expected: "brand:Samsung AND color:Black",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.rule.String()
+			if result != tt.expected {
+				t.Errorf("String() = %q, want %q", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestFitDecisionList_BasicCase(t *testing.T) {
+	// Create facet sets where items 0,1,2 share "brand:A" and items 3,4,5 share "brand:B"
+	facetSets := []FacetSet{
+		{"brand:A": true, "color:Red": true},
+		{"brand:A": true, "color:Blue": true},
+		{"brand:A": true, "color:Green": true},
+		{"brand:B": true, "color:Red": true},
+		{"brand:B": true, "color:Blue": true},
+		{"brand:B": true, "color:Green": true},
+	}
+
+	// Cluster is items 0,1,2 (brand:A items)
+	positiveIndices := []int{0, 1, 2}
+
+	rule, quality := fitDecisionList(positiveIndices, facetSets, logger.Default())
+
+	// Rule should capture brand:A
+	if rule == nil || len(rule.Clauses) == 0 {
+		t.Fatal("fitDecisionList() returned empty rule")
+	}
+
+	// Should have high recall (capture all brand:A items)
+	if quality.Recall < 0.9 {
+		t.Errorf("fitDecisionList() recall = %.3f, want >= 0.9", quality.Recall)
+	}
+
+	// Verify the rule matches all positive items
+	for _, idx := range positiveIndices {
+		if !rule.Matches(facetSets[idx]) {
+			t.Errorf("fitDecisionList() rule doesn't match positive item %d", idx)
+		}
+	}
+}
+
+func TestFitDecisionList_EmptyPositives(t *testing.T) {
+	facetSets := []FacetSet{
+		{"brand:A": true},
+		{"brand:B": true},
+	}
+
+	rule, quality := fitDecisionList([]int{}, facetSets, logger.Default())
+
+	if len(rule.Clauses) != 0 {
+		t.Errorf("fitDecisionList() with empty positives should return empty rule")
+	}
+	if quality.Recall != 0 || quality.Precision != 0 {
+		t.Errorf("fitDecisionList() with empty positives should have zero quality metrics")
+	}
+}
+
+func TestComputeRuleQuality(t *testing.T) {
+	facetSets := []FacetSet{
+		{"brand:A": true}, // 0 - positive
+		{"brand:A": true}, // 1 - positive
+		{"brand:A": true}, // 2 - negative but matches rule
+		{"brand:B": true}, // 3 - negative
+	}
+	positiveIndices := []int{0, 1}
+
+	// Rule that matches items 0, 1, 2 (all brand:A)
+	rule := DecisionList{
+		Clauses: []Clause{
+			{FacetName: "brand", Values: []string{"A"}},
+		},
+	}
+
+	quality := computeRuleQuality(rule, positiveIndices, facetSets)
+
+	// Recall: 2/2 = 1.0 (all positives match)
+	if math.Abs(quality.Recall-1.0) > 0.001 {
+		t.Errorf("computeRuleQuality() recall = %.3f, want 1.0", quality.Recall)
+	}
+
+	// Precision: 2/3 = 0.667 (2 true positives out of 3 matches)
+	expectedPrecision := 2.0 / 3.0
+	if math.Abs(quality.Precision-expectedPrecision) > 0.001 {
+		t.Errorf("computeRuleQuality() precision = %.3f, want %.3f", quality.Precision, expectedPrecision)
+	}
+
+	// F1: 2 * (0.667 * 1.0) / (0.667 + 1.0) = 0.8
+	expectedF1 := 2 * expectedPrecision * 1.0 / (expectedPrecision + 1.0)
+	if math.Abs(quality.F1-expectedF1) > 0.001 {
+		t.Errorf("computeRuleQuality() F1 = %.3f, want %.3f", quality.F1, expectedF1)
+	}
+}
+
+func TestProcessCluster_HasRules(t *testing.T) {
+	// Create items with clear cluster structure
+	algoliaResults := &algolia.SearchResult{
+		Hits: []algolia.Hit{
+			// Cluster 1: Electronics
+			{ObjectID: "1", Name: "Phone 1", Facets: map[string]interface{}{"category": "Electronics", "brand": "Samsung"}},
+			{ObjectID: "2", Name: "Phone 2", Facets: map[string]interface{}{"category": "Electronics", "brand": "Samsung"}},
+			{ObjectID: "3", Name: "Phone 3", Facets: map[string]interface{}{"category": "Electronics", "brand": "Apple"}},
+			// Cluster 2: Clothing
+			{ObjectID: "4", Name: "Shirt 1", Facets: map[string]interface{}{"category": "Clothing", "brand": "Nike"}},
+			{ObjectID: "5", Name: "Shirt 2", Facets: map[string]interface{}{"category": "Clothing", "brand": "Nike"}},
+			{ObjectID: "6", Name: "Shirt 3", Facets: map[string]interface{}{"category": "Clothing", "brand": "Adidas"}},
+		},
+	}
+
+	result, err := ProcessCluster("test", algoliaResults, logger.Default())
+	if err != nil {
+		t.Fatalf("ProcessCluster() error = %v", err)
+	}
+
+	// Check that clusters have rules
+	for i, group := range result.Groups {
+		if group.Rule == nil {
+			t.Errorf("ProcessCluster() group %d has nil Rule", i)
+			continue
+		}
+		if len(group.Rule.Clauses) == 0 {
+			t.Errorf("ProcessCluster() group %d has empty Rule", i)
+		}
+		if group.RuleQuality == nil {
+			t.Errorf("ProcessCluster() group %d has nil RuleQuality", i)
+		}
+	}
+}

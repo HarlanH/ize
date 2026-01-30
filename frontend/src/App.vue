@@ -75,7 +75,7 @@ const clusterCount = ref<number>(0)
 const clusterLoading = ref(false)
 const clusterError = ref<string | null>(null)
 const clusterSelectedName = ref<string | null>(null) // Track selected cluster for Clear button
-const allClusterResults = ref<SearchResult[]>([]) // Store all results to restore on clear
+const clusterFilters = ref<string[][]>([]) // Accumulated filters for drill-down
 
 function onFacetToggle(payload: { facet: string; value: string; checked: boolean }) {
   const curr = selectedFacetValues.value[payload.facet] ?? []
@@ -250,36 +250,46 @@ async function runClusterSearch(query: string, facetFilters: string[][] = []): P
   }
 }
 
-function onClusterSelect(payload: { index: number; name: string }) {
-  // When a cluster is selected, show its items in the results grid
-  if (clusterGroups.value && clusterGroups.value[payload.index]) {
-    // Store all results before filtering (if not already stored)
-    if (!clusterSelectedName.value) {
-      allClusterResults.value = [...results.value]
+async function onClusterSelect(payload: { index: number; name: string; rule?: string[][] }) {
+  // When a cluster is selected, use its rule to drill down
+  if (!payload.rule || payload.rule.length === 0) {
+    // No rule, just show the items (fallback)
+    if (clusterGroups.value && clusterGroups.value[payload.index]) {
+      results.value = clusterGroups.value[payload.index].items
+      clusterSelectedName.value = payload.name
     }
-    results.value = clusterGroups.value[payload.index].items
-    clusterSelectedName.value = payload.name
+    return
   }
+
+  // Add the rule clauses to accumulated filters and re-run clustering
+  clusterFilters.value = [...clusterFilters.value, ...payload.rule]
+  clusterSelectedName.value = payload.name
+
+  // Re-run the main search with accumulated filters
+  await runSearch(lastQuery.value, clusterFilters.value)
+
+  // Re-run clustering with accumulated filters to get sub-clusters
+  await runClusterSearch(lastQuery.value, clusterFilters.value)
 }
 
 function onClusterSelectOther() {
   // When "Other" is clicked, show the other group items in the results grid
   if (clusterOtherGroup.value) {
-    // Store all results before filtering (if not already stored)
-    if (!clusterSelectedName.value) {
-      allClusterResults.value = [...results.value]
-    }
     results.value = clusterOtherGroup.value
     clusterSelectedName.value = 'Other'
   }
 }
 
 function clearClusterSelection() {
-  // Restore all results and clear selection
-  if (allClusterResults.value.length > 0) {
-    results.value = allClusterResults.value
-  }
+  // Reset filters and re-run clustering from scratch
+  clusterFilters.value = []
   clusterSelectedName.value = null
+
+  // Re-run the search without cluster filters
+  void runSearch(lastQuery.value, [])
+
+  // Re-run clustering without filters
+  void runClusterSearch(lastQuery.value, [])
 }
 
 onMounted(() => {

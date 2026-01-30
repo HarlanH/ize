@@ -46,10 +46,19 @@ export interface FacetCount {
   percentage: number
 }
 
+export interface RuleQuality {
+  precision: number
+  recall: number
+  f1: number
+}
+
 export interface ClusterGroup {
   name: string
   items: SearchResult[]
   topFacets: FacetCount[]
+  rule?: string[][] // Algolia filter format for "load more"
+  ruleDescription?: string // Human-readable rule
+  ruleQuality?: RuleQuality // Rule quality metrics
 }
 
 export interface ClusterResponse {

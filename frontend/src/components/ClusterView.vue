@@ -12,11 +12,12 @@
         v-for="(group, index) in groups"
         :key="index"
         class="group-item"
+        :class="{ 'group-item--selected': props.selectedName === group.name }"
       >
         <button
           class="group-item__main"
           type="button"
-          @click="emit('select', { index, name: group.name })"
+          @click="emit('select', { index, name: group.name, rule: group.rule })"
         >
           <span class="group-item__name">{{ group.name }}</span>
           <span class="group-item__count">{{ group.items.length }}</span>
@@ -26,20 +27,31 @@
           class="group-item__toggle"
           type="button"
           @click.stop="toggleFacets(index)"
-          :title="expandedFacets.has(index) ? 'Hide facets' : 'Show facets'"
+          :title="expandedFacets.has(index) ? 'Hide details' : 'Show details'"
         >
           <span class="toggle-icon">{{ expandedFacets.has(index) ? '▼' : '▶' }}</span>
-          <span class="toggle-label">{{ group.topFacets.length }} facets</span>
+          <span class="toggle-label">Details</span>
         </button>
-        <div v-if="expandedFacets.has(index)" class="group-item__facets">
-          <span
-            v-for="facet in group.topFacets"
-            :key="`${facet.facetName}:${facet.facetValue}`"
-            class="facet-tag"
-          >
-            {{ facet.facetName }}: {{ facet.facetValue }}
-            <span class="facet-tag__pct">{{ Math.round(facet.percentage) }}%</span>
-          </span>
+        <div v-if="expandedFacets.has(index)" class="group-item__details">
+          <!-- Rule description -->
+          <div v-if="group.ruleDescription" class="rule-section">
+            <div class="rule-label">Filter rule:</div>
+            <code class="rule-code">{{ group.ruleDescription }}</code>
+          </div>
+          <!-- Top facets -->
+          <div class="facets-section">
+            <div class="facets-label">Top facets:</div>
+            <div class="facet-tags">
+              <span
+                v-for="facet in group.topFacets"
+                :key="`${facet.facetName}:${facet.facetValue}`"
+                class="facet-tag"
+              >
+                {{ facet.facetName }}: {{ facet.facetValue }}
+                <span class="facet-tag__pct">{{ Math.round(facet.percentage) }}%</span>
+              </span>
+            </div>
+          </div>
         </div>
       </div>
       <div
@@ -70,10 +82,11 @@ const props = defineProps<{
   clusterCount?: number
   loading?: boolean
   error?: string | null
+  selectedName?: string | null
 }>()
 
 const emit = defineEmits<{
-  (e: 'select', payload: { index: number; name: string }): void
+  (e: 'select', payload: { index: number; name: string; rule?: string[][] }): void
   (e: 'select-other'): void
 }>()
 
@@ -210,13 +223,54 @@ function toggleFacets(index: number) {
   color: #888;
 }
 
-.group-item__facets {
+.group-item--selected {
+  border-color: #1976d2;
+  box-shadow: 0 0 0 1px #1976d2;
+}
+
+.group-item__details {
+  padding: 0.75rem 1rem;
+  background: #fafafa;
+  border-top: 1px solid #eee;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.rule-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.rule-label,
+.facets-label {
+  font-size: 0.7rem;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.rule-code {
+  font-family: 'SF Mono', Menlo, Monaco, monospace;
+  font-size: 0.75rem;
+  background: #e8e8e8;
+  padding: 0.35rem 0.5rem;
+  border-radius: 4px;
+  color: #333;
+  word-break: break-all;
+}
+
+.facets-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.facet-tags {
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
-  padding: 0.5rem 1rem 0.75rem;
-  background: #fafafa;
-  border-top: 1px solid #eee;
 }
 
 .group-item__hint {
@@ -265,6 +319,11 @@ function toggleFacets(index: number) {
     background: #121212;
   }
 
+  .group-item--selected {
+    border-color: #42a5f5;
+    box-shadow: 0 0 0 1px #42a5f5;
+  }
+
   .group-item__main:hover {
     background: #1a1a1a;
   }
@@ -295,9 +354,19 @@ function toggleFacets(index: number) {
     color: #777;
   }
 
-  .group-item__facets {
+  .group-item__details {
     background: #1a1a1a;
     border-top-color: #2a2a2a;
+  }
+
+  .rule-label,
+  .facets-label {
+    color: #777;
+  }
+
+  .rule-code {
+    background: #2a2a2a;
+    color: #ddd;
   }
 
   .group-item__hint {
