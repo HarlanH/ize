@@ -14,8 +14,8 @@
         type="button"
         @click="emit('select', { facetName: group.facetName, facetValue: group.facetValue })"
       >
-        <span class="group-item__label">{{ group.facetName }}: {{ group.facetValue }}</span>
-        <span class="group-item__count">{{ group.count }}</span>
+        <span class="group-item__label">{{ getFacetDisplayName(group.facetName) }}: {{ getDisplayValue(group.facetName, group.facetValue) }}</span>
+        <span class="group-item__count">{{ group.count.toLocaleString() }}</span>
       </button>
       <button
         v-if="otherGroup && otherGroup.length > 0"
@@ -32,11 +32,12 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { RipperGroup, SearchResult } from '../types'
+import type { RipperGroup, SearchResult, FacetMeta } from '../types'
 
 const props = defineProps<{
   groups?: RipperGroup[]
   otherGroup?: SearchResult[]
+  facetMeta?: FacetMeta[]
   loading?: boolean
   error?: string | null
 }>()
@@ -47,6 +48,30 @@ const emit = defineEmits<{
 }>()
 
 const groups = computed(() => props.groups ?? [])
+
+// Build a lookup map for facet metadata
+const facetMetaMap = computed(() => {
+  const map = new Map<string, FacetMeta>()
+  for (const meta of props.facetMeta ?? []) {
+    map.set(meta.field, meta)
+  }
+  return map
+})
+
+// Get display name for a facet field
+function getFacetDisplayName(facetName: string): string {
+  const meta = facetMetaMap.value.get(facetName)
+  return meta?.displayName ?? facetName
+}
+
+// Get display value for a facet value (applying removePrefix if configured)
+function getDisplayValue(facetName: string, facetValue: string): string {
+  const meta = facetMetaMap.value.get(facetName)
+  if (meta?.removePrefix && facetValue.startsWith(meta.removePrefix)) {
+    return facetValue.slice(meta.removePrefix.length)
+  }
+  return facetValue
+}
 </script>
 
 <style scoped>

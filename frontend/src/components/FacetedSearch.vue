@@ -79,6 +79,7 @@
         <RipperView
           :groups="ripperGroups"
           :other-group="ripperOtherGroup"
+          :facet-meta="ripperFacetMeta"
           :loading="ripperLoading"
           :error="ripperError"
           @select="emit('ripper-select', $event)"
@@ -119,14 +120,16 @@ import { computed } from 'vue'
 import Facet from './Facet.vue'
 import RipperView from './RipperView.vue'
 import ClusterView from './ClusterView.vue'
-import type { Facet as FacetType, RipperGroup, ClusterGroup, SearchResult } from '../types'
+import type { Facet as FacetType, FacetMeta, RipperGroup, ClusterGroup, SearchResult } from '../types'
 
 const props = defineProps<{
   facets?: Record<string, Record<string, number>>
+  facetMeta?: FacetMeta[]
   selected: Record<string, string[]>
   activeTab?: 'faceted' | 'ripper' | 'cluster'
   ripperGroups?: RipperGroup[]
   ripperOtherGroup?: SearchResult[]
+  ripperFacetMeta?: FacetMeta[]
   ripperLoading?: boolean
   ripperError?: string | null
   ripperFilterPath?: string[]
@@ -154,13 +157,34 @@ const activeTab = computed(() => props.activeTab ?? 'faceted')
 
 const facetList = computed<FacetType[]>(() => {
   const facets = props.facets ?? {}
+  const meta = props.facetMeta ?? []
+  
+  // If facetMeta is provided, only show those facets in that order
+  if (meta.length > 0) {
+    return meta
+      .filter(m => facets[m.field]) // Only include facets that have values
+      .map(m => {
+        const valuesMap = facets[m.field] ?? {}
+        const values = Object.entries(valuesMap)
+          .map(([value, count]) => ({ value, count }))
+          .sort((a, b) => b.count - a.count || a.value.localeCompare(b.value))
+        return { 
+          name: m.field, 
+          displayName: m.displayName,
+          removePrefix: m.removePrefix,
+          values 
+        }
+      })
+  }
+  
+  // Fallback: show all facets sorted alphabetically (legacy behavior)
   return Object.entries(facets)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([name, valuesMap]) => {
       const values = Object.entries(valuesMap ?? {})
         .map(([value, count]) => ({ value, count }))
         .sort((a, b) => b.count - a.count || a.value.localeCompare(b.value))
-      return { name, values }
+      return { name, displayName: name, values }
     })
 })
 

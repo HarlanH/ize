@@ -2,9 +2,9 @@ package ize
 
 import (
 	"fmt"
-	"math"
 	"ize/internal/algolia"
 	"ize/internal/logger"
+	"math"
 )
 
 // RipperGroup represents a group of items sharing a facet value
@@ -137,7 +137,7 @@ func ProcessRipper(query string, algoliaResults *algolia.SearchResult, log *logg
 	// Greedy selection: select top 5 facet values
 	selectedGroups := make([]RipperGroup, 0, 5)
 	selectedFacetValues := make(map[string]map[string]bool) // facetName -> facetValue -> true
-	assignedItems := make(map[int]bool) // Track which items have been assigned to groups
+	assignedItems := make(map[int]bool)                     // Track which items have been assigned to groups
 
 	for iteration := 0; iteration < 5; iteration++ {
 		// Calculate information gain for all facet values using unassigned items
@@ -148,14 +148,14 @@ func ProcessRipper(query string, algoliaResults *algolia.SearchResult, log *logg
 
 		// Count unassigned items
 		totalUnassigned := totalItems - len(assignedItems)
-		
+
 		log.Debug("ProcessRipper: iteration started",
 			"iteration", iteration+1,
 			"total_unassigned", totalUnassigned,
 			"assigned_items", len(assignedItems),
 			"selected_groups_count", len(selectedGroups),
 		)
-		
+
 		// If no unassigned items remain, stop
 		if totalUnassigned < minGroupSize {
 			log.Debug("ProcessRipper: stopping early, insufficient unassigned items",
@@ -186,29 +186,29 @@ func ProcessRipper(query string, algoliaResults *algolia.SearchResult, log *logg
 				}
 
 				t := totalUnassigned
-				
+
 				// Calculate information gain using entropy-based approach
 				// Information gain measures how much we learn by splitting on this facet value
-				// 
+				//
 				// If facet applies to ALL items (p = t): gain = 0 (no information gained)
-				// If facet applies to NONE (p = 0): gain = 0 (no information gained)  
+				// If facet applies to NONE (p = 0): gain = 0 (no information gained)
 				// Maximum gain occurs when split is balanced (p ≈ t/2)
 				//
 				// We use the entropy of the split: H = -p/t * log2(p/t) - (1-p/t) * log2(1-p/t)
 				// This measures the "surprise" or information content of the split
 				// Higher entropy = more balanced split = more information gain
-				
+
 				var gain float64
 				if p == 0 || t == 0 || p == t {
 					// No information gain if all items match or none match
 					gain = 0
 				} else {
 					ratio := float64(p) / float64(t)
-					
+
 					// Entropy of the binary split
 					// Maximum when ratio = 0.5 (perfectly balanced)
 					entropySplit := -ratio*math.Log2(ratio) - (1-ratio)*math.Log2(1-ratio)
-					
+
 					// Weight by number of items in the group to prefer larger groups
 					// But also weight by (1-ratio) to penalize when ratio approaches 1
 					// This ensures facets covering all items get zero gain
@@ -271,14 +271,22 @@ func ProcessRipper(query string, algoliaResults *algolia.SearchResult, log *logg
 			groupItems = append(groupItems, allItems[idx])
 		}
 
+		// Use Algolia's facet counts if available (reflects entire result set),
+		// otherwise fall back to counts from hits (top N only)
+		totalCount := initialCounts[bestFacetName][bestFacetValue]
+		if algoliaResults.Facets != nil {
+			if facetValues, ok := algoliaResults.Facets[bestFacetName]; ok {
+				if count, ok := facetValues[bestFacetValue]; ok {
+					totalCount = int(count)
+				}
+			}
+		}
+
 		selectedGroups = append(selectedGroups, RipperGroup{
 			FacetName:  bestFacetName,
 			FacetValue: bestFacetValue,
 			Items:      groupItems,
-			// Use the initialCounts map so the count reflects the total
-			// number of items with this facet value in the filtered
-			// result set, not just the remaining unassigned items.
-			TotalCount: initialCounts[bestFacetName][bestFacetValue],
+			TotalCount: totalCount,
 		})
 	}
 

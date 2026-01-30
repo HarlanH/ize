@@ -20,7 +20,7 @@
           @click="emit('select', { index, name: group.name, rule: group.rule })"
         >
           <span class="group-item__name">{{ group.name }}</span>
-          <span class="group-item__count">{{ group.items.length }}</span>
+          <span class="group-item__pct">~{{ Math.round(group.percentage) }}%</span>
         </button>
         <button
           v-if="group.topFacets && group.topFacets.length > 0"
@@ -64,7 +64,7 @@
           @click="emit('select-other')"
         >
           <span class="group-item__name">Other</span>
-          <span class="group-item__count">{{ otherGroup.length }}</span>
+          <span class="group-item__pct">~{{ otherPercentage }}%</span>
         </button>
         <div class="group-item__hint">Items that don't fit well in any cluster</div>
       </div>
@@ -92,6 +92,12 @@ const emit = defineEmits<{
 
 const groups = computed(() => props.groups ?? [])
 const otherGroup = computed(() => props.otherGroup ?? [])
+
+// Calculate Other percentage (remaining after all groups)
+const otherPercentage = computed(() => {
+  const totalGroupPct = groups.value.reduce((sum, g) => sum + g.percentage, 0)
+  return Math.round(Math.max(0, 100 - totalGroupPct))
+})
 
 // Track which clusters have expanded facets (default: all collapsed)
 const expandedFacets = ref<Set<number>>(new Set())
@@ -186,11 +192,12 @@ function toggleFacets(index: number) {
   flex: 1;
 }
 
-.group-item__count {
-  font-size: 0.9rem;
-  color: #666;
-  font-weight: 600;
+.group-item__pct {
+  font-size: 0.85rem;
+  color: #888;
+  font-weight: 500;
   margin-left: 1rem;
+  font-style: italic;
 }
 
 .group-item__toggle {
@@ -332,8 +339,8 @@ function toggleFacets(index: number) {
     color: #eee;
   }
 
-  .group-item__count {
-    color: #aaa;
+  .group-item__pct {
+    color: #888;
   }
 
   .group-item__toggle {

@@ -5,9 +5,16 @@ export interface SearchRequest {
   facetFilters?: string[][]
 }
 
+export interface FacetMeta {
+  field: string
+  displayName: string
+  removePrefix?: string
+}
+
 export interface SearchResponse {
   hits: SearchResult[]
   facets?: Record<string, Record<string, number>>
+  facetMeta?: FacetMeta[]
 }
 
 export interface SearchResult {
@@ -23,7 +30,9 @@ export interface FacetValue {
 }
 
 export interface Facet {
-  name: string
+  name: string         // The actual field name (used for filtering)
+  displayName: string  // User-friendly name for UI display
+  removePrefix?: string // Optional prefix to strip from facet values
   values: FacetValue[]
 }
 
@@ -31,12 +40,13 @@ export interface RipperGroup {
   facetName: string
   facetValue: string
   items: SearchResult[]
-  count: number
+  count: number // Accurate count from Algolia facets
 }
 
 export interface RipperResponse {
   groups: RipperGroup[]
   otherGroup: SearchResult[]
+  facetMeta?: FacetMeta[]
 }
 
 export interface FacetCount {
@@ -55,6 +65,7 @@ export interface RuleQuality {
 export interface ClusterGroup {
   name: string
   items: SearchResult[]
+  percentage: number // Approximate percentage (~X%)
   topFacets: FacetCount[]
   rule?: string[][] // Algolia filter format for "load more"
   ruleDescription?: string // Human-readable rule
@@ -65,4 +76,5 @@ export interface ClusterResponse {
   groups: ClusterGroup[]
   otherGroup: SearchResult[]
   clusterCount: number
+  totalHits: number
 }

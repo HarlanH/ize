@@ -11,10 +11,12 @@
       <div class="refinement-panel">
         <FacetedSearch
           :facets="facets"
+          :facet-meta="facetMeta"
           :selected="selectedFacetValues"
           :active-tab="activeTab"
           :ripper-groups="ripperGroups"
           :ripper-other-group="ripperOtherGroup"
+          :ripper-facet-meta="ripperFacetMeta"
           :ripper-loading="ripperLoading"
           :ripper-error="ripperError"
           :ripper-filter-path="ripperFilterPath"
@@ -50,12 +52,13 @@ import SearchBar from './components/SearchBar.vue'
 import ResultsGrid from './components/ResultsGrid.vue'
 import FacetedSearch from './components/FacetedSearch.vue'
 import { searchWithFacetGroups, searchRipper, searchCluster } from './api/search'
-import type { SearchResult, RipperGroup, ClusterGroup } from './types'
+import type { SearchResult, RipperGroup, ClusterGroup, FacetMeta } from './types'
 
 const results = ref<SearchResult[]>([])
 const loading = ref(false)
 const error = ref<string | null>(null)
 const facets = ref<Record<string, Record<string, number>> | undefined>(undefined)
+const facetMeta = ref<FacetMeta[] | undefined>(undefined)
 const lastQuery = ref('')
 const selectedFacetValues = ref<Record<string, string[]>>({})
 
@@ -63,6 +66,7 @@ const selectedFacetValues = ref<Record<string, string[]>>({})
 const activeTab = ref<'faceted' | 'ripper' | 'cluster'>('faceted')
 const ripperGroups = ref<RipperGroup[] | undefined>(undefined)
 const ripperOtherGroup = ref<SearchResult[] | undefined>(undefined)
+const ripperFacetMeta = ref<FacetMeta[] | undefined>(undefined)
 const ripperLoading = ref(false)
 const ripperError = ref<string | null>(null)
 const ripperFilters = ref<string[][]>([]) // Track RIPPER filter path
@@ -113,11 +117,13 @@ async function runSearch(query: string, facetGroups: string[][]): Promise<boolea
     const response = await searchWithFacetGroups(query, facetGroups)
     results.value = response.hits
     facets.value = response.facets
+    facetMeta.value = response.facetMeta
     return true
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Search failed'
     results.value = []
     facets.value = undefined
+    facetMeta.value = undefined
     return false
   } finally {
     loading.value = false
@@ -149,11 +155,13 @@ async function runRipperSearch(query: string, facetFilters: string[][] = []): Pr
     const response = await searchRipper(query, facetFilters)
     ripperGroups.value = response.groups
     ripperOtherGroup.value = response.otherGroup
+    ripperFacetMeta.value = response.facetMeta
     return true
   } catch (err) {
     ripperError.value = err instanceof Error ? err.message : 'RIPPER search failed'
     ripperGroups.value = undefined
     ripperOtherGroup.value = undefined
+    ripperFacetMeta.value = undefined
     return false
   } finally {
     ripperLoading.value = false

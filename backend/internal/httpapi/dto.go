@@ -6,10 +6,18 @@ type SearchRequest struct {
 	FacetFilters [][]string `json:"facetFilters,omitempty"`
 }
 
+// FacetMeta provides display metadata for a facet field
+type FacetMeta struct {
+	Field        string `json:"field"`                  // Algolia facet field name
+	DisplayName  string `json:"displayName"`            // User-friendly name for UI
+	RemovePrefix string `json:"removePrefix,omitempty"` // Optional prefix to strip from facet values
+}
+
 // SearchResponse represents the search response
 type SearchResponse struct {
-	Hits   []SearchResult              `json:"hits"`
-	Facets map[string]map[string]int32 `json:"facets,omitempty"`
+	Hits      []SearchResult              `json:"hits"`
+	Facets    map[string]map[string]int32 `json:"facets,omitempty"`
+	FacetMeta []FacetMeta                 `json:"facetMeta,omitempty"`
 }
 
 // SearchResult represents a single search result
@@ -25,13 +33,14 @@ type RipperGroup struct {
 	FacetName  string         `json:"facetName"`
 	FacetValue string         `json:"facetValue"`
 	Items      []SearchResult `json:"items"`
-	Count      int            `json:"count"`
+	Count      int            `json:"count"` // Accurate count from Algolia facets
 }
 
 // RipperResponse represents the RIPPER algorithm response
 type RipperResponse struct {
 	Groups     []RipperGroup  `json:"groups"`
 	OtherGroup []SearchResult `json:"otherGroup"`
+	FacetMeta  []FacetMeta    `json:"facetMeta,omitempty"`
 }
 
 // FacetCount represents a facet:value pair with its count and percentage
@@ -53,6 +62,7 @@ type RuleQuality struct {
 type ClusterGroup struct {
 	Name            string         `json:"name"` // LLM-generated label
 	Items           []SearchResult `json:"items"`
+	Percentage      float64        `json:"percentage"`                // Approximate percentage of total results (~X%)
 	TopFacets       []FacetCount   `json:"topFacets"`                 // For transparency
 	Rule            [][]string     `json:"rule,omitempty"`            // Algolia filter format for "load more"
 	RuleDescription string         `json:"ruleDescription,omitempty"` // Human-readable rule
@@ -64,4 +74,5 @@ type ClusterResponse struct {
 	Groups       []ClusterGroup `json:"groups"`
 	OtherGroup   []SearchResult `json:"otherGroup"`
 	ClusterCount int            `json:"clusterCount"` // Selected k value
+	TotalHits    int            `json:"totalHits"`    // Total matching records from Algolia
 }

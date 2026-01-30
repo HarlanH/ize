@@ -15,10 +15,19 @@ type SearchHandler struct {
 	algoliaClient   algolia.ClientInterface
 	anthropicClient anthropic.ClientInterface
 	logger          *logger.Logger
+	facetMeta       []FacetMeta // Pre-computed facet metadata for responses
 }
 
 func NewSearchHandler(cfg *config.Config, log *logger.Logger) (*SearchHandler, error) {
-	algoliaClient, err := algolia.NewClient(cfg.AlgoliaAppID, cfg.AlgoliaAPIKey, cfg.AlgoliaIndexName, log)
+	// Create Algolia client with field mapping and facet configuration
+	algoliaClient, err := algolia.NewClientWithConfig(
+		cfg.AlgoliaAppID,
+		cfg.AlgoliaAPIKey,
+		cfg.AlgoliaIndexName,
+		cfg.FieldMapping,
+		cfg.GetFacetFields(),
+		log,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -34,10 +43,21 @@ func NewSearchHandler(cfg *config.Config, log *logger.Logger) (*SearchHandler, e
 		log.Info("anthropic API key not configured, cluster naming will use fallback labels")
 	}
 
+	// Build facet metadata from config
+	var facetMeta []FacetMeta
+	for _, fc := range cfg.Facets {
+		facetMeta = append(facetMeta, FacetMeta{
+			Field:        fc.Field,
+			DisplayName:  fc.DisplayName,
+			RemovePrefix: fc.RemovePrefix,
+		})
+	}
+
 	return &SearchHandler{
 		algoliaClient:   algoliaClient,
 		anthropicClient: anthropicClient,
 		logger:          log,
+		facetMeta:       facetMeta,
 	}, nil
 }
 
@@ -95,8 +115,9 @@ func (h *SearchHandler) HandleSearch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := SearchResponse{
-		Hits:   results,
-		Facets: algoliaResults.Facets,
+		Hits:      results,
+		Facets:    algoliaResults.Facets,
+		FacetMeta: h.facetMeta,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -176,11 +197,7 @@ func (h *SearchHandler) HandleRipper(w http.ResponseWriter, r *http.Request) {
 			FacetName:  group.FacetName,
 			FacetValue: group.FacetValue,
 			Items:      items,
-			// Use the TotalCount from the algorithm so the count shown
-			// in the UI reflects all items with this facet value in the
-			// current (possibly filtered) result set, not just the
-			// remaining unassigned items when the group was selected.
-			Count: group.TotalCount,
+			Count:      group.TotalCount, // Accurate count from Algolia facets
 		}
 	}
 
@@ -198,6 +215,7 @@ func (h *SearchHandler) HandleRipper(w http.ResponseWriter, r *http.Request) {
 	response := RipperResponse{
 		Groups:     groups,
 		OtherGroup: otherGroup,
+		FacetMeta:  h.facetMeta,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -293,6 +311,10 @@ func (h *SearchHandler) HandleCluster(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Convert ize.ClusterGroup to httpapi.ClusterGroup
+	// Calculate approximate percentages based on sample
+	totalHits := algoliaResults.TotalHits
+	sampleSize := len(algoliaResults.Hits)
+
 	groups := make([]ClusterGroup, len(clusterResult.Groups))
 	for i, group := range clusterResult.Groups {
 		items := make([]SearchResult, len(group.Items))
@@ -331,9 +353,16 @@ func (h *SearchHandler) HandleCluster(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		// Calculate approximate percentage from sample
+		var percentage float64
+		if sampleSize > 0 {
+			percentage = float64(len(group.Items)) / float64(sampleSize) * 100
+		}
+
 		groups[i] = ClusterGroup{
 			Name:            group.Name,
 			Items:           items,
+			Percentage:      percentage,
 			TopFacets:       topFacets,
 			Rule:            rule,
 			RuleDescription: ruleDescription,
@@ -356,6 +385,7 @@ func (h *SearchHandler) HandleCluster(w http.ResponseWriter, r *http.Request) {
 		Groups:       groups,
 		OtherGroup:   otherGroup,
 		ClusterCount: clusterResult.ClusterCount,
+		TotalHits:    totalHits,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

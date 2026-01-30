@@ -3,7 +3,7 @@
     <div class="facet__header">
       <button class="facet__toggle" type="button" @click="collapsed = !collapsed">
         <span class="facet__chev" aria-hidden="true">{{ collapsed ? '▸' : '▾' }}</span>
-        <span class="facet__name">{{ facet.name }}</span>
+        <span class="facet__name">{{ facet.displayName }}</span>
       </button>
       <div class="facet__meta" v-if="selectedCount > 0">{{ selectedCount }}</div>
     </div>
@@ -16,7 +16,7 @@
             :checked="selectedValuesSet.has(v.value)"
             @change="onToggle(v.value, ($event.target as HTMLInputElement).checked)"
           />
-          <span class="facet__valueText">{{ v.value }}</span>
+          <span class="facet__valueText">{{ displayValue(v.value) }}</span>
           <span class="facet__count">{{ v.count }}</span>
         </label>
       </li>
@@ -41,6 +41,15 @@ const selectedValuesSet = computed(() => new Set(props.selectedValues ?? []))
 const selectedCount = computed(() => selectedValuesSet.value.size)
 
 const collapsed = ref(false)
+
+// Strip the configured prefix from a value for display purposes
+function displayValue(value: string): string {
+  const prefix = props.facet.removePrefix
+  if (prefix && value.startsWith(prefix)) {
+    return value.slice(prefix.length)
+  }
+  return value
+}
 
 function onToggle(value: string, checked: boolean) {
   emit('toggle', { facet: props.facet.name, value, checked })
